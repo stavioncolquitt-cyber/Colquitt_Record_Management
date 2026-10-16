@@ -1,0 +1,150 @@
+===============================================================================
+BUG REPORT - Student Record Management System
+Author: Stavion Colquitt
+Date:   2026-10-16
+File:   student_records.py
+===============================================================================
+
+Bug type totals found: Crash 2, Logic 6, Subtle 2  (10 total)
+
+-------------------------------------------------------------------------------
+Bug #:        1
+Type:         Crash
+Line(s):      69
+Original:     csv_file.close()
+Fixed:        (moved after the for loop, or use "with open(...) as csv_file:")
+Symptom:      Selecting Option 1 immediately raised
+              ValueError: I/O operation on closed file. No records ever loaded.
+Explanation:  csv.DictReader is lazy and reads the file during iteration, not
+              when it is created. Closing the handle before the loop leaves the
+              reader with nothing to read from, so the file must stay open until
+              iteration finishes.
+
+-------------------------------------------------------------------------------
+Bug #:        2
+Type:         Crash
+Line(s):      149
+Original:     print(f"  Student ID    : {found_student['Student_ID']}")
+Fixed:        print(f"  Student ID    : {found_student['StudentID']}")
+Symptom:      Any successful search crashed with KeyError: 'Student_ID'. The
+              search only appeared to work when it found nothing.
+Explanation:  The dictionary is built at line 79 with the key "StudentID" and no
+              underscore. Dictionary keys are exact strings, so the extra
+              underscore referenced a key that does not exist.
+
+-------------------------------------------------------------------------------
+Bug #:        3
+Type:         Logic
+Line(s):      22, 89
+Original:     csv_loaded = False        (never reassigned after a load)
+Fixed:        csv_loaded = True         (added after the load loop completes)
+Symptom:      Records loaded and the success message printed, but Options 2 and
+              3 always reported "No data loaded."
+Explanation:  The flag that gates Options 2 and 3 was initialized to False and
+              never updated, so the guard clauses always triggered. Setting it
+              True after a successful load makes the flag reflect reality.
+
+-------------------------------------------------------------------------------
+Bug #:        4
+Type:         Logic
+Line(s):      71-86
+Original:     (the load loop appends without clearing student_records first)
+Fixed:        student_records.clear()   (added before the for loop)
+Symptom:      Loading the same file twice produced 20 records instead of 10, and
+              every record appeared duplicated in the listing.
+Explanation:  The list persists between menu selections, so appending without
+              clearing accumulates records across loads. Clearing first makes
+              each load replace the collection rather than add to it.
+
+-------------------------------------------------------------------------------
+Bug #:        5
+Type:         Logic
+Line(s):      102
+Original:     print("-" * 80)
+Fixed:        print("-" * 82)
+Symptom:      The separator above the column headers was two characters shorter
+              than the ones below it, so the table did not line up.
+Explanation:  Lines 104 and 118 both use 82. Matching the first separator to the
+              other two makes all three the same width as the header row.
+
+-------------------------------------------------------------------------------
+Bug #:        6
+Type:         Logic
+Line(s):      106-116
+Original:     row_number = 1            (never incremented inside the loop)
+Fixed:        row_number = row_number + 1   (added at the end of the loop body)
+Symptom:      Every row in the listing printed with the number 1 instead of
+              counting 1, 2, 3 and so on.
+Explanation:  The counter was initialized once before the loop but never
+              advanced, so each iteration printed the same starting value.
+              Incrementing inside the loop makes it track the current row.
+
+-------------------------------------------------------------------------------
+Bug #:        7
+Type:         Logic
+Line(s):      159
+Original:     elif menu_choice == 4:
+Fixed:        elif menu_choice == "4":
+Symptom:      Choosing Option 4 printed "'4' is not a valid option" and the
+              program could not be exited through the menu.
+Explanation:  input() always returns a string, so comparing it to the integer 4
+              is always False and the branch never ran. Comparing to the string
+              "4" matches what the user actually typed.
+
+-------------------------------------------------------------------------------
+Bug #:        8
+Type:         Logic
+Line(s):      25, 133
+Original:     found_student = None      (set once at startup, never reset)
+Fixed:        found_student = None      (added at the start of each search)
+Symptom:      After one successful search, a later search for a nonexistent ID
+              reported the previous student as found instead of reporting no
+              match.
+Explanation:  The variable held its value from the prior search, so the
+              "if found_student is None" check passed incorrectly. Resetting it
+              before each search makes the result reflect only the current query.
+
+-------------------------------------------------------------------------------
+Bug #:        9
+Type:         Subtle
+Line(s):      135, 138
+Original:     while search_index <= len(student_records):
+                  ...
+                  search_index = len(student_records)  - 1   # Force loop to end
+Fixed:        while search_index < len(student_records):
+                  ...
+                  search_index = len(student_records)        # Force loop to end
+Symptom:      Searching for the last record in the file, or for an ID that does
+              not exist, crashed with IndexError: list index out of range.
+Explanation:  Valid indices run from 0 to len-1, so "<=" allows one index past
+              the end. The exit line also stopped one short, which let the loop
+              re-check and then step past the final element. Using "<" and
+              setting the index to len() exits cleanly in both cases.
+
+-------------------------------------------------------------------------------
+Bug #:        10
+Type:         Subtle
+Line(s):      136
+Original:     if student_records[search_index]["StudentID"].upper() == search_id:
+Fixed:        if student_records[search_index]["StudentID"].upper() == search_id.upper():
+Symptom:      Searching for "s1005" in lowercase reported no match, while
+              "S1005" in uppercase worked correctly.
+Explanation:  Only the stored ID was uppercased, so the comparison still failed
+              whenever the user's input differed in case. Uppercasing both sides
+              makes the comparison genuinely case-insensitive.
+
+===============================================================================
+TEST RESULTS AFTER FIXES
+===============================================================================
+
+[x] Option 1 with a valid filename loads 10 records without crashing
+[x] Option 1 run twice still reports 10 records, not 20
+[x] Option 2 before loading reports "No data loaded"
+[x] Option 2 after loading shows rows numbered 1 through 10 with aligned columns
+[x] Option 3 with "S1005" finds Emily Chen
+[x] Option 3 with "s1005" in lowercase finds the same record
+[x] Option 3 with "S1010", the last record, returns it without IndexError
+[x] Option 3 with "S9999" reports no match instead of crashing
+[x] Option 3 for a missing ID after a successful search reports no match
+[x] Option 4 exits with the goodbye message
+[x] An invalid entry such as "7" reports the invalid-option message
